@@ -18,22 +18,37 @@ import java.util.Map;
 @RestController
 @RequestMapping("/email")
 public class EmailController {
+    
+    private static final String MAIN_TEMPLATE = "main.html";
+    private final EmailClient emailClient;
+
 
     @Value("${azure.communication.connection-string}")
     private String connectionString;
 
 
+    public EmailController(EmailClient emailClient) {
+        this.emailClient = emailClient;
+    }
+    
+    /**
+     * Add example how to make the connection with managed identity*
+     */
+
+
+
     @PostMapping("/send")
     public ResponseEntity<String> receiveEmail(@RequestBody Email email) {
-        EmailClient emailClient = new EmailClientBuilder().connectionString(connectionString).buildClient();
-
         EmailAddress toAddress = new EmailAddress(email.getTo());
+
+        var innerTemplate = loadTemplateAndReplaceTags(email.getTemplate(), email.getTemplateData());
+        var outer = loadTemplateAndReplaceTags(MAIN_TEMPLATE, Map.of("body", innerTemplate));
 
         EmailMessage emailMessage = new EmailMessage()
                 .setSenderAddress(email.getSender())
                 .setToRecipients(toAddress)
                 .setSubject(email.getSubject())
-                .setBodyHtml(loadTemplateAndReplaceTags(email.getTemplate(), email.getTemplateData()));
+                .setBodyHtml(outer);
 
         SyncPoller<EmailSendResult, EmailSendResult> poller = emailClient.beginSend(emailMessage, null);
         PollResponse<EmailSendResult> result = poller.waitForCompletion();
@@ -49,7 +64,7 @@ public class EmailController {
             // Step 3: Iterate over the entries in the map
             for (Map.Entry<String, String> entry : replacements.entrySet()) {
                 // Step 4: Replace all occurrences of the key (wrapped with <% and %>) with the value
-                content = content.replace("<%" + entry.getKey() + "%>", entry.getValue());
+                content = content.replace("{{" + entry.getKey() + "}}", entry.getValue());
             }
             return content;
         } catch (Exception e) {
